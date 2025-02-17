@@ -87,7 +87,7 @@ func makeRoute(
 	uh := userHandler.NewUserHandler(useCases.UserUC)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Mount("/user", route.UserRouter(uh))
+		r.Mount("/auth", route.UserRouter(uh))
 	})
 
 	return r

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"time"
 
 	dtoNats "go-auth-service/src/app/dto/broker"
@@ -28,6 +29,7 @@ type UserUCInterface interface {
 	Logout(userId int64, email, userAgent string) error
 	RevokeToken(emailEncrypt string) error
 	UpdateUserProfile(userId int64, data *user.UpdateUserProfileReq) error
+	UpdateProfilePicture(userId int64, fileHeader *multipart.FileHeader) error
 }
 
 type userUseCase struct {
@@ -82,49 +84,42 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 	var resp user.LoginResp
 	var users *models.User
 
-	// Rate limiting untuk mencegah brute force
+	// Rate limiting
 	loginKey := fmt.Sprintf("%s:%s", common.LoginKey, data.Email)
 	allowed, _ := uc.Redis.IsAllowed(context.Background(), loginKey, 5, common.RateLimit)
 	if !allowed {
 		return nil, fmt.Errorf(errorMessage.ToManyRequest)
 	}
 
-	// Redis keys untuk token
 	accessTokenKey := fmt.Sprintf("%s:%s", common.AccessTokenKey, data.Email)
 	refreshTokenKey := fmt.Sprintf("%s:%s", common.RefreshTokenKey, data.Email)
 
-	// Cek access token di Redis
 	cachedAccessToken, err := uc.Redis.GetData(context.Background(), accessTokenKey)
 	if err == nil && cachedAccessToken != "" {
 		claims, err := helper.VerifyToken(cachedAccessToken)
 		if err == nil {
-			// Jika access token masih valid, langsung return
 			resp.AccessToken = cachedAccessToken
 			resp.RefreshToken, _ = uc.Redis.GetData(context.Background(), refreshTokenKey)
 
-			// Buat user object dari token
 			users = &models.User{
 				Id:    claims.UserID,
 				Email: claims.Email,
 			}
 		} else {
-			_ = uc.Redis.DeleteData(context.Background(), accessTokenKey) // Hapus token invalid
+			_ = uc.Redis.DeleteData(context.Background(), accessTokenKey)
 		}
 	}
 
-	// Cek refresh token di Redis jika tidak ada access token yang valid
 	if users == nil {
 		cachedRefreshToken, err := uc.Redis.GetData(context.Background(), refreshTokenKey)
 		if err == nil && cachedRefreshToken != "" {
 			claims, err := helper.VerifyRefreshToken(cachedRefreshToken)
 			if err == nil {
-				// Gunakan ID User dari Refresh Token
 				users = &models.User{
 					Id:    claims.UserID,
 					Email: claims.Email,
 				}
 
-				// Generate access token baru
 				resp.AccessToken, err = helper.GenerateToken(users)
 				if err != nil {
 					return nil, err
@@ -132,27 +127,23 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 
 				resp.RefreshToken = cachedRefreshToken
 
-				// Simpan access token baru di Redis
 				_ = uc.Redis.SetData(context.Background(), accessTokenKey, resp.AccessToken, common.AccessTokenExp)
 			} else {
-				_ = uc.Redis.DeleteData(context.Background(), refreshTokenKey) // Hapus refresh token invalid
+				_ = uc.Redis.DeleteData(context.Background(), refreshTokenKey)
 			}
 		}
 	}
 
-	// Jika belum ada user (karena token tidak valid atau tidak ditemukan), lakukan query ke database
 	if users == nil {
 		users, err = uc.RepoUser.GetByEmail(data.Email)
 		if err != nil {
 			return nil, err
 		}
 
-		// Verifikasi password
 		if err = helper.VerifyPassword(users.Password, data.Password); err != nil {
 			return nil, fmt.Errorf(errorMessage.InvalidPassword)
 		}
 
-		// Generate access token & refresh token baru
 		resp.AccessToken, err = helper.GenerateToken(users)
 		if err != nil {
 			return nil, err
@@ -163,12 +154,10 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 			return nil, err
 		}
 
-		// Simpan access token & refresh token di Redis
 		_ = uc.Redis.SetData(context.Background(), accessTokenKey, resp.AccessToken, common.AccessTokenExp)
 		_ = uc.Redis.SetData(context.Background(), refreshTokenKey, resp.RefreshToken, common.RefreshTokenExp)
 	}
 
-	// Kirim notifikasi login sukses via email
 	sendMailDto := dtoNats.AuthBrokerDto{
 		UserId:    users.Id,
 		IpAddress: ipAddress,
@@ -335,7 +324,41 @@ func (uc *userUseCase) UpdateUserProfile(userId int64, data *user.UpdateUserProf
 		}
 	}
 
-	err = uc.RepoUser.UpdateUserProfileByUserId(userId, data.FirstName, data.LastName, data.BirthDate, data.Gender)
+	err = uc.RepoUser.UpdateProfileByUserId(userId, data.FirstName, data.LastName, data.BirthDate, data.Gender)
+	if err != nil {
+		return err
+	}
+
+	_ = uc.Redis.DeleteData(context.Background(), userKey)
+
+	return nil
+}
+
+func (uc *userUseCase) UpdateProfilePicture(userId int64, fileHeader *multipart.FileHeader) error {
+	var users *user.UserDetails
+	userKey := fmt.Sprintf("%s:%d", common.UserIdKey, userId)
+
+	userData, err := uc.Redis.GetData(context.Background(), userKey)
+	if err == nil && userData != "" {
+		users = &user.UserDetails{}
+		if err := json.Unmarshal([]byte(userData), users); err != nil {
+			users = nil
+		}
+	}
+
+	if users == nil {
+		users, err = uc.RepoUser.GetUserDetailById(userId)
+		if err != nil {
+			return err
+		}
+	}
+
+	path, err := helper.UploadPicture(fileHeader, users.UserId)
+	if err != nil {
+		return err
+	}
+
+	err = uc.RepoUser.UpdateProfilePictureByUserId(users.UserId, path)
 	if err != nil {
 		return err
 	}

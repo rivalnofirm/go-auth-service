@@ -20,7 +20,8 @@ type UserRepository interface {
 	GetByEmail(email string) (*models.User, error)
 	GetById(id int64) (*models.User, error)
 	GetUserDetailById(id int64) (*dtoUser.UserDetails, error)
-	UpdateUserProfileByUserId(userId int64, firstName, lastName, birthDate, gender string) error
+	UpdateProfileByUserId(userId int64, firstName, lastName, birthDate, gender string) error
+	UpdateProfilePictureByUserId(userId int64, path string) error
 }
 
 const (
@@ -51,6 +52,7 @@ const (
 						WHERE
 							ua.id = $1 AND ua.deleted_at IS NULL AND ud.deleted_at IS NULL`
 	UpdateUserDetailByUserId = `UPDATE user_detail SET first_name = $1, last_name = $2, birth_date = $3, gender = $4, updated_at = now() WHERE user_id = $5 AND deleted_at IS NULL`
+	UpdatePictureByUserId    = `UPDATE user_detail SET picture = $1, updated_at = now() WHERE user_id = $2 AND deleted_at IS NULL`
 )
 
 type PreparedStatement struct {
@@ -60,6 +62,7 @@ type PreparedStatement struct {
 	getById                  *sqlx.Stmt
 	getUserDetail            *sqlx.Stmt
 	updateUserDetailByUserId *sqlx.Stmt
+	updatePictureByUserId    *sqlx.Stmt
 }
 
 type userRepo struct {
@@ -102,6 +105,7 @@ func InitPreparedStatement(m *userRepo) {
 		getById:                  m.Preparex(GetById, common.NotIsMasterDb),
 		getUserDetail:            m.Preparex(GetUserDetail, common.NotIsMasterDb),
 		updateUserDetailByUserId: m.Preparex(UpdateUserDetailByUserId, common.IsMasterDb),
+		updatePictureByUserId:    m.Preparex(UpdatePictureByUserId, common.IsMasterDb),
 	}
 }
 
@@ -237,8 +241,17 @@ func (p *userRepo) GetUserDetailById(id int64) (*dtoUser.UserDetails, error) {
 	return data, nil
 }
 
-func (p *userRepo) UpdateUserProfileByUserId(userId int64, firstName, lastName, birthDate, gender string) error {
+func (p *userRepo) UpdateProfileByUserId(userId int64, firstName, lastName, birthDate, gender string) error {
 	_, err := p.statement.updateUserDetailByUserId.Exec(firstName, lastName, birthDate, gender, userId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *userRepo) UpdateProfilePictureByUserId(userId int64, path string) error {
+	_, err := p.statement.updatePictureByUserId.Exec(path, userId)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ type UserHandlerInterface interface {
 	Logout(w http.ResponseWriter, r *http.Request)
 	RevokeToken(w http.ResponseWriter, r *http.Request)
 	UpdateProfile(w http.ResponseWriter, r *http.Request)
+	UpdateProfilePicture(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {
@@ -223,4 +224,36 @@ func (h *userHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, "success", "update profile", nil)
+}
+
+func (h *userHandler) UpdateProfilePicture(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	if token == "" {
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingToken, nil)
+		return
+	}
+
+	claims, err := helper.VerifyToken(token)
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.InvalidToken, nil)
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("profile_picture")
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusBadRequest, "error", errorMessage.RequestPayload, nil)
+		return
+	}
+	defer file.Close()
+
+	err = h.usecase.UpdateProfilePicture(claims.UserID, fileHeader)
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusBadRequest, "error", errorMessage.RequestPayload, nil)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", "update profile picture", nil)
 }
