@@ -1,6 +1,42 @@
 version: '3'
 
 services:
+  api-auth-service:
+    container_name: api-auth-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./env/env_docker_api
+    volumes:
+      - ./logs:/root/logs
+    restart: unless-stopped
+    depends_on:
+      - database
+      - redis
+      - nats
+    networks:
+      - auth-service
+
+  worker-auth-service:
+    container_name: worker-auth-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./env/env_docker_worker
+    volumes:
+      - ./logs:/root/logs
+      - ./src/infra/template:/app/src/infra/template
+    restart: unless-stopped
+    depends_on:
+      - database
+      - redis
+      - nats
+      - api-auth-service
+    networks:
+      - auth-service
+
   database:
     image: postgres:15-alpine
     environment:
@@ -9,12 +45,49 @@ services:
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+    networks:
+      - auth-service
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d
     restart: unless-stopped
 
   redis:
     image: redis:alpine
-    container_name: redis_service
+    container_name: redis-cache
     ports:
       - "6379:6379"
+    networks:
+      - auth-service
     command: redis-server --appendonly yes
     restart: unless-stopped
+
+  nats:
+    image: nats:latest
+    container_name: nats-server
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    restart: unless-stopped
+    networks:
+      - auth-service
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api-auth-service
+      - database
+      - redis
+      - nats
+    networks:
+      - auth-service
+    volumes:
+      - ./logs/nginx:/var/log/nginx
+    restart: unless-stopped
+
+networks:
+  auth-service:
+    driver: bridge

@@ -75,7 +75,7 @@ func (uc *MailUseCase) SendMailLogin(userId int64, ipAddress, userAgent string) 
 			fileBody = os.Getenv("PATH_EMAIL_TEMPLATE") + "login-warning.html"
 
 			emailEncrypt, _ := helper.Encrypt(users.Email)
-			urlRevokeToke := os.Getenv("URL_HOST") + "/api/user/revoke-token/" + emailEncrypt
+			urlRevokeToke := os.Getenv("URL_API") + "/api/user/revoke-token/" + emailEncrypt
 			dataEmail["url_revoke_token"] = urlRevokeToke
 
 			revokeToken := fmt.Sprintf("%s:%s", common.RevokeTokenKey, users.Email)

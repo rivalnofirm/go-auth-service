@@ -71,10 +71,13 @@ func (uc *userUseCase) Register(data *user.RegisterReq) error {
 	}
 
 	dataPublishMarshal, _ := json.Marshal(sendMailDto)
-	err = uc.NatsPublisher.Nats(dataPublishMarshal, common.NatsAuthQueue)
+	err = uc.NatsPublisher.Nats(dataPublishMarshal, common.NatsAuthSubject)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
+
+	log.Println("publish to nats")
 
 	return nil
 }
@@ -168,6 +171,7 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 	dataPublishMarshal, _ := json.Marshal(sendMailDto)
 	err = uc.NatsPublisher.Nats(dataPublishMarshal, common.NatsAuthSubject)
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 

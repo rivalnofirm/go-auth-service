@@ -156,7 +156,7 @@ func secureFilename(filename string) string {
 
 func UploadPicture(fileHeader *multipart.FileHeader, userId int64) (string, error) {
 	allowedType := map[string]bool{"png": true, "jpg": true, "jpeg": true}
-	uploadPath := os.Getenv("UPLOAD_PATH")
+	uploadPath := os.Getenv("PATH_UPLOAD")
 
 	// Create directory if it doesn't exist
 	err := os.MkdirAll(uploadPath, 0755)

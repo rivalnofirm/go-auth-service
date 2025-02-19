@@ -24,7 +24,7 @@ const (
 	RevokeTokenExp  = 30 * time.Minute
 
 	NatsAuthSubject = `AuthSubject`
-	NatsAuthQueue   = `SendAuthQueue`
+	NatsAuthQueue   = `AuthQueue`
 
 	EventLogin    = "Login"
 	EventRegister = "Register"

@@ -7,7 +7,7 @@ import (
 	natsPub "go-auth-service/src/infra/broker/nats/publisher"
 	"go-auth-service/src/infra/persistence/redis"
 	redisServe "go-auth-service/src/infra/persistence/redis/service"
-	mailWorker "go-auth-service/src/interface/broker/mail"
+	authWorker "go-auth-service/src/interface/broker/auth"
 
 	usecase "go-auth-service/src/app/usecases"
 	mailUC "go-auth-service/src/app/usecases/mail"
@@ -77,7 +77,7 @@ func main() {
 	}
 
 	// * worker initialization *
-	mailWorker.NewAuthWorker(Nats, useCaseList.MailUC)
+	authWorker.NewAuthWorker(Nats, useCaseList.MailUC)
 
 	httpServer, err := rest.New(
 		conf.Http,
