@@ -17,6 +17,7 @@ import (
 	"go-auth-service/src/infra/helper"
 	"go-auth-service/src/infra/models"
 	repoHistory "go-auth-service/src/infra/persistence/postgres/history"
+	reporefreshToken "go-auth-service/src/infra/persistence/postgres/refresh_token"
 	repoUser "go-auth-service/src/infra/persistence/postgres/user"
 	redis "go-auth-service/src/infra/persistence/redis/service"
 )
@@ -24,8 +25,8 @@ import (
 type UserUCInterface interface {
 	Register(data *user.RegisterReq) error
 	Login(data *user.LoginReq, ipAddress, userAgent string) (*user.LoginResp, error)
-	VerifyToken(userId int64) (*user.UserDetails, error)
-	RefreshToken(refreshToken string) (*user.RefreshTokenResp, error)
+	Me(userId int64) (*user.UserDetails, error)
+	RefreshToken(refreshToken, userAgent string) (*user.RefreshTokenResp, error)
 	Logout(userId int64, email, userAgent string) error
 	RevokeToken(emailEncrypt string) error
 	UpdateUserProfile(userId int64, data *user.UpdateUserProfileReq) error
@@ -33,10 +34,11 @@ type UserUCInterface interface {
 }
 
 type userUseCase struct {
-	NatsPublisher natsPublisher.PublisherInterface
-	Redis         redis.ServRedisInterface
-	RepoUser      repoUser.UserRepository
-	RepoHistory   repoHistory.HistoryRepository
+	NatsPublisher    natsPublisher.PublisherInterface
+	Redis            redis.ServRedisInterface
+	RepoUser         repoUser.UserRepository
+	RepoHistory      repoHistory.HistoryRepository
+	RepoRefreshToken reporefreshToken.RefreshTokenRepository
 }
 
 func NewUserUseCase(
@@ -44,12 +46,14 @@ func NewUserUseCase(
 	redisService redis.ServRedisInterface,
 	repoUser repoUser.UserRepository,
 	repoHistory repoHistory.HistoryRepository,
+	repoRefreshToken reporefreshToken.RefreshTokenRepository,
 ) UserUCInterface {
 	return &userUseCase{
-		NatsPublisher: natsPublisher,
-		Redis:         redisService,
-		RepoUser:      repoUser,
-		RepoHistory:   repoHistory,
+		NatsPublisher:    natsPublisher,
+		Redis:            redisService,
+		RepoUser:         repoUser,
+		RepoHistory:      repoHistory,
+		RepoRefreshToken: repoRefreshToken,
 	}
 }
 
@@ -94,72 +98,38 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 		return nil, fmt.Errorf(errorMessage.ToManyRequest)
 	}
 
-	accessTokenKey := fmt.Sprintf("%s:%s", common.AccessTokenKey, data.Email)
-	refreshTokenKey := fmt.Sprintf("%s:%s", common.RefreshTokenKey, data.Email)
-
-	cachedAccessToken, err := uc.Redis.GetData(context.Background(), accessTokenKey)
-	if err == nil && cachedAccessToken != "" {
-		claims, err := helper.VerifyToken(cachedAccessToken)
-		if err == nil {
-			resp.AccessToken = cachedAccessToken
-			resp.RefreshToken, _ = uc.Redis.GetData(context.Background(), refreshTokenKey)
-
-			users = &models.User{
-				Id:    claims.UserID,
-				Email: claims.Email,
-			}
-		} else {
-			_ = uc.Redis.DeleteData(context.Background(), accessTokenKey)
-		}
+	users, err = uc.RepoUser.GetByEmail(data.Email)
+	if err != nil {
+		return nil, err
 	}
 
-	if users == nil {
-		cachedRefreshToken, err := uc.Redis.GetData(context.Background(), refreshTokenKey)
-		if err == nil && cachedRefreshToken != "" {
-			claims, err := helper.VerifyRefreshToken(cachedRefreshToken)
-			if err == nil {
-				users = &models.User{
-					Id:    claims.UserID,
-					Email: claims.Email,
-				}
-
-				resp.AccessToken, err = helper.GenerateToken(users)
-				if err != nil {
-					return nil, err
-				}
-
-				resp.RefreshToken = cachedRefreshToken
-
-				_ = uc.Redis.SetData(context.Background(), accessTokenKey, resp.AccessToken, common.AccessTokenExp)
-			} else {
-				_ = uc.Redis.DeleteData(context.Background(), refreshTokenKey)
-			}
-		}
+	if err = helper.VerifyPassword(users.Password, data.Password); err != nil {
+		return nil, fmt.Errorf(errorMessage.InvalidPassword)
 	}
 
-	if users == nil {
-		users, err = uc.RepoUser.GetByEmail(data.Email)
-		if err != nil {
-			return nil, err
-		}
-
-		if err = helper.VerifyPassword(users.Password, data.Password); err != nil {
-			return nil, fmt.Errorf(errorMessage.InvalidPassword)
-		}
-
-		resp.AccessToken, err = helper.GenerateToken(users)
-		if err != nil {
-			return nil, err
-		}
-
-		resp.RefreshToken, err = helper.GenerateRefreshToken(users)
-		if err != nil {
-			return nil, err
-		}
-
-		_ = uc.Redis.SetData(context.Background(), accessTokenKey, resp.AccessToken, common.AccessTokenExp)
-		_ = uc.Redis.SetData(context.Background(), refreshTokenKey, resp.RefreshToken, common.RefreshTokenExp)
+	resp.AccessToken, err = helper.GenerateToken(users)
+	if err != nil {
+		return nil, err
 	}
+
+	resp.RefreshToken, err = helper.GenerateRefreshToken(users)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshTokenHash, err := helper.HashRefreshToken(resp.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	err = uc.RepoRefreshToken.Create(users.Id, refreshTokenHash, userAgent)
+	if err != nil {
+		return nil, err
+	}
+
+	deviceKey := helper.NormalizeUserAgent(userAgent)
+	refreshTokenKey := fmt.Sprintf("%s:%s:%s", common.RefreshTokenKey, data.Email, deviceKey)
+	_ = uc.Redis.SetData(context.Background(), refreshTokenKey, refreshTokenHash, common.RefreshTokenExp)
 
 	sendMailDto := dtoNats.AuthBrokerDto{
 		UserId:    users.Id,
@@ -178,7 +148,7 @@ func (uc *userUseCase) Login(data *user.LoginReq, ipAddress, userAgent string) (
 	return &resp, nil
 }
 
-func (uc *userUseCase) VerifyToken(userId int64) (*user.UserDetails, error) {
+func (uc *userUseCase) Me(userId int64) (*user.UserDetails, error) {
 	userKey := fmt.Sprintf("%s:%d", common.UserIdKey, userId)
 	userData, err := uc.Redis.GetData(context.Background(), userKey)
 	if err == nil && userData != "" {
@@ -203,35 +173,48 @@ func (uc *userUseCase) VerifyToken(userId int64) (*user.UserDetails, error) {
 	return result, nil
 }
 
-func (uc *userUseCase) RefreshToken(refreshToken string) (*user.RefreshTokenResp, error) {
+func (uc *userUseCase) RefreshToken(refreshToken, userAgent string) (*user.RefreshTokenResp, error) {
 	var resp user.RefreshTokenResp
-	var users *models.User
 
 	claims, err := helper.VerifyRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	userKey := fmt.Sprintf("%s:%d", common.UserIdKey, claims.UserID)
-	userData, err := uc.Redis.GetData(context.Background(), userKey)
-	if err == nil && userData != "" {
-		_ = json.Unmarshal([]byte(userData), &users)
-	} else {
-		usersFromDB, err := uc.RepoUser.GetById(claims.UserID)
-		if err != nil {
-			return nil, err
-		}
-		users = usersFromDB
-	}
-
-	accessToken, err := helper.GenerateToken(users)
+	hashed, err := helper.HashRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	accessTokenKey := fmt.Sprintf("%s:%s", common.AccessTokenKey, claims.Email)
-	_ = uc.Redis.DeleteData(context.Background(), accessToken)
-	_ = uc.Redis.SetData(context.Background(), accessTokenKey, accessToken, common.AccessTokenExp)
+	deviceKey := helper.NormalizeUserAgent(userAgent)
+	refreshTokenKey := fmt.Sprintf("%s:%s:%s", common.RefreshTokenKey, claims.Email, deviceKey)
+	cacheRefreshToken, err := uc.Redis.GetData(context.Background(), refreshTokenKey)
+	if err == nil && cacheRefreshToken != "" {
+		if hashed != cacheRefreshToken {
+			return nil, errors.New(errorMessage.InvalidToken)
+		}
+	} else {
+		refreshTokenDb, err := uc.RepoRefreshToken.GetTokenActive(claims.UserID, userAgent)
+		if err != nil {
+			return nil, err
+		}
+
+		if hashed != refreshTokenDb.RefreshTokenHash {
+			return nil, errors.New(errorMessage.InvalidToken)
+		}
+
+		if refreshTokenDb.ExpiresAt.Valid && refreshTokenDb.ExpiresAt.Time.Before(time.Now()) {
+			return nil, errors.New(errorMessage.ExpiredToken)
+		}
+	}
+
+	accessToken, err := helper.GenerateToken(&models.User{
+		Id:    claims.UserID,
+		Email: claims.Email,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	resp.AccessToken = accessToken
 
@@ -244,10 +227,13 @@ func (uc *userUseCase) Logout(userId int64, email, userAgent string) error {
 		return err
 	}
 
-	accessTokenKey := fmt.Sprintf("%s:%s", common.AccessTokenKey, email)
-	refreshTokenKey := fmt.Sprintf("%s:%s", common.RefreshTokenKey, email)
+	err = uc.RepoRefreshToken.UpdateStatus(userId, userAgent)
+	if err != nil {
+		return err
+	}
 
-	_ = uc.Redis.DeleteData(context.Background(), accessTokenKey)
+	deviceKey := helper.NormalizeUserAgent(userAgent)
+	refreshTokenKey := fmt.Sprintf("%s:%s:%s", common.RefreshTokenKey, email, deviceKey)
 	_ = uc.Redis.DeleteData(context.Background(), refreshTokenKey)
 
 	return nil

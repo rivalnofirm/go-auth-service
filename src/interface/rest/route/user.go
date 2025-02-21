@@ -12,7 +12,7 @@ func UserRouter(h handlersUser.UserHandlerInterface) http.Handler {
 
 	r.Post("/register", h.Register)
 	r.Post("/login", h.Login)
-	r.Get("/me", h.VerifyToken)
+	r.Get("/me", h.Me)
 	r.Get("/refresh-token", h.RefreshToken)
 	r.Get("/logout", h.Logout)
 	r.Get("/revoke-token/{email-encrypt}", h.RevokeToken)

@@ -5,8 +5,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt"
@@ -298,18 +300,6 @@ func Decrypt(encodedText string) (string, error) {
 	return string(unpaddedText), nil
 }
 
-func GenerateRandomToken() (string, error) {
-	bytes := make([]byte, 32)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %v", err)
-	}
-
-	token := base64.URLEncoding.EncodeToString(bytes)
-
-	return token, nil
-}
-
 func GetRealIP(r *http.Request) string {
 	xff := r.Header.Get("X-Forwarded-For")
 	if xff != "" {
@@ -326,5 +316,55 @@ func GetRealIP(r *http.Request) string {
 	if strings.Contains(ip, ":") {
 		ip = strings.Split(ip, ":")[0]
 	}
+
 	return ip
+}
+
+func HashRefreshToken(refreshToken string) (string, error) {
+	hash := sha256.New()
+	_, err := hash.Write([]byte(refreshToken))
+	if err != nil {
+		return "", err
+	}
+
+	hashBytes := hash.Sum(nil)
+	hashString := hex.EncodeToString(hashBytes)
+
+	return hashString, nil
+}
+
+func NormalizeUserAgent(userAgent string) string {
+	// Tentukan OS
+	device := "unknown"
+	if strings.Contains(userAgent, "Windows") {
+		device = "Windows"
+	} else if strings.Contains(userAgent, "Macintosh") {
+		device = "MacOS"
+	} else if strings.Contains(userAgent, "Linux") {
+		device = "Linux"
+	} else if strings.Contains(userAgent, "Android") {
+		device = "Android"
+	} else if strings.Contains(userAgent, "iPhone") || strings.Contains(userAgent, "iPad") {
+		device = "iOS"
+	}
+
+	// Tentukan Browser
+	browser := "unknown"
+	if strings.Contains(userAgent, "Chrome") {
+		browser = "Chrome"
+	} else if strings.Contains(userAgent, "Firefox") {
+		browser = "Firefox"
+	} else if strings.Contains(userAgent, "Safari") && !strings.Contains(userAgent, "Chrome") {
+		browser = "Safari"
+	} else if strings.Contains(userAgent, "Edge") {
+		browser = "Edge"
+	} else if strings.Contains(userAgent, "Opera") || strings.Contains(userAgent, "OPR") {
+		browser = "Opera"
+	}
+
+	// Gabungkan dan format key
+	deviceKey := strings.ToLower(device + "_" + browser)
+
+	// Encode agar aman di Redis
+	return deviceKey
 }

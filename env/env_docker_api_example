@@ -51,3 +51,4 @@ NATS_HOST=nats://nats:4222
 # URL
 URL_API=http://localhost
 URL_PICTURE=http://localhost
+URL_RESET_PASSWORD="fill in with the reset password URL"

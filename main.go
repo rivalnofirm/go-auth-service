@@ -16,6 +16,7 @@ import (
 	ms_log "go-auth-service/src/infra/log"
 	postgresDb "go-auth-service/src/infra/persistence/postgres"
 	historyRepo "go-auth-service/src/infra/persistence/postgres/history"
+	refreshTokenRepo "go-auth-service/src/infra/persistence/postgres/refresh_token"
 	userRepo "go-auth-service/src/infra/persistence/postgres/user"
 	"go-auth-service/src/interface/rest"
 )
@@ -69,10 +70,11 @@ func main() {
 
 	userRepository := userRepo.NewUserRepository(postgresConnection)
 	historyRepository := historyRepo.NewHistoryRepository(postgresConnection)
+	refreshTokenRepository := refreshTokenRepo.NewRefreshTokenRepository(postgresConnection)
 
 	// Inisialisasi use cases
 	useCaseList := usecase.AllUseCases{
-		UserUC: userUC.NewUserUseCase(natsPublisher, redisService, userRepository, historyRepository),
+		UserUC: userUC.NewUserUseCase(natsPublisher, redisService, userRepository, historyRepository, refreshTokenRepository),
 		MailUC: mailUC.NewMailUseCase(redisService, userRepository, historyRepository),
 	}
 

@@ -12,7 +12,7 @@ import (
 type HistoryRepository interface {
 	Create(userId int64, ipAddress, userAgent string) error
 	UpdateLogoutByUserIdAndUserAgent(userId int64, logoutReason, userAgent string) error
-	GetByUserId(useId int64) ([]*models.History, error)
+	GetByUserId(useId int64) ([]*models.UserLoginHistory, error)
 	UpdateLogoutByUserId(userId int64, logoutReason string) error
 }
 
@@ -89,8 +89,8 @@ func (p *historyRepo) UpdateLogoutByUserIdAndUserAgent(userId int64, logoutReaso
 	return nil
 }
 
-func (p *historyRepo) GetByUserId(userId int64) ([]*models.History, error) {
-	var history []*models.History
+func (p *historyRepo) GetByUserId(userId int64) ([]*models.UserLoginHistory, error) {
+	var history []*models.UserLoginHistory
 
 	err := p.statement.getByUserId.Select(&history, userId)
 	if err != nil {
@@ -98,7 +98,7 @@ func (p *historyRepo) GetByUserId(userId int64) ([]*models.History, error) {
 	}
 
 	if len(history) == 0 {
-		return []*models.History{}, nil
+		return []*models.UserLoginHistory{}, nil
 	}
 
 	return history, nil

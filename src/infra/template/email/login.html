@@ -38,6 +38,25 @@
             font-size: 16px;
             line-height: 1.6;
         }
+        .button-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .reset-button {
+            background-color: #007bff; /* Warna biru */
+            color: #ffffff !important; /* Paksa teks menjadi putih */
+            padding: 12px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: bold;
+            display: inline-block;
+            text-align: center;
+            border: none;
+        }
+        .reset-button:hover {
+            background-color: #0056b3; /* Warna biru lebih gelap saat hover */
+        }
         .footer {
             text-align: center;
             padding: 15px;
@@ -59,6 +78,11 @@
         <p><strong>Device : </strong> {{.user_agent}}</p>
         <p><strong>Login Time : </strong> {{.login_time}}</p>
         <p>If this was you, you can safely ignore this email. If not, please reset your password immediately or contact support.</p>
+
+        <div class="button-container">
+            <a href="{{.reset_password_link}}" class="reset-button">Reset Password</a>
+        </div>
+
         <p>Stay secure,<br>The Security Team</p>
     </div>
     <div class="footer">

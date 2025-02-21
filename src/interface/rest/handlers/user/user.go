@@ -17,7 +17,7 @@ import (
 type UserHandlerInterface interface {
 	Register(w http.ResponseWriter, r *http.Request)
 	Login(w http.ResponseWriter, r *http.Request)
-	VerifyToken(w http.ResponseWriter, r *http.Request)
+	Me(w http.ResponseWriter, r *http.Request)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
 	Logout(w http.ResponseWriter, r *http.Request)
 	RevokeToken(w http.ResponseWriter, r *http.Request)
@@ -93,6 +93,10 @@ func (h *userHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *userHandler) Login(w http.ResponseWriter, r *http.Request) {
 	userIp := helper.GetRealIP(r)
 	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingUserAgent, nil)
+		return
+	}
 
 	postDTO := user.LoginReq{}
 	err := json.NewDecoder(r.Body).Decode(&postDTO)
@@ -119,7 +123,7 @@ func (h *userHandler) Login(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, "success", "successful login", token)
 }
 
-func (h *userHandler) VerifyToken(w http.ResponseWriter, r *http.Request) {
+func (h *userHandler) Me(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 	if token == "" {
 		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingToken, nil)
@@ -133,7 +137,7 @@ func (h *userHandler) VerifyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDetail, err := h.usecase.VerifyToken(claims.UserID)
+	userDetail, err := h.usecase.Me(claims.UserID)
 	if err != nil {
 		log.Println(err)
 		response.JSON(w, http.StatusUnauthorized, "error", err.Error(), nil)
@@ -150,7 +154,13 @@ func (h *userHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.usecase.RefreshToken(refreshToken)
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingUserAgent, nil)
+		return
+	}
+
+	accessToken, err := h.usecase.RefreshToken(refreshToken, userAgent)
 	if err != nil {
 		log.Println(err)
 		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.Unauthorized, nil)
@@ -161,11 +171,15 @@ func (h *userHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *userHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	userAgent := r.Header.Get("User-Agent")
-
 	token := r.Header.Get("Authorization")
 	if token == "" {
 		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingToken, nil)
+		return
+	}
+
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingUserAgent, nil)
 		return
 	}
 
@@ -246,7 +260,12 @@ func (h *userHandler) UpdateProfilePicture(w http.ResponseWriter, r *http.Reques
 		response.JSON(w, http.StatusBadRequest, "error", errorMessage.RequestPayload, nil)
 		return
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Println("Error closing file:", err)
+		}
+	}()
 
 	err = h.usecase.UpdateProfilePicture(claims.UserID, fileHeader)
 	if err != nil {

@@ -2,9 +2,6 @@ package mail
 
 import (
 	"bytes"
-	"context"
-	"fmt"
-	"go-auth-service/src/infra/constants/common"
 	"html/template"
 	"os"
 	"time"
@@ -40,50 +37,22 @@ func (uc *MailUseCase) SendMailLogin(userId int64, ipAddress, userAgent string) 
 		return err
 	}
 
-	history, err := uc.RepoHistory.GetByUserId(userId)
-	if err != nil {
-		return err
-	}
-
 	name := users.FirstName
 	if users.LastName != "" {
 		name = users.FirstName + " " + users.LastName
 	}
 
-	var fileBody string
-
 	dataEmail := map[string]interface{}{
-		"name":       name,
-		"ip_address": ipAddress,
-		"user_agent": userAgent,
-		"login_time": time.Now().Format("02 Jan 2006 15:04:05"),
+		"name":                name,
+		"ip_address":          ipAddress,
+		"user_agent":          userAgent,
+		"login_time":          time.Now().Format("02 Jan 2006 15:04:05"),
+		"reset_password_link": os.Getenv("URL_RESET_PASSWORD"),
 	}
 
-	// Jika history kosong, gunakan fileBody default
-	if len(history) == 0 {
-		fileBody = os.Getenv("PATH_EMAIL_TEMPLATE") + "login.html"
-	} else {
-		found := false
-		for _, h := range history {
-			if h.UserAgent.Valid && h.UserAgent.String == userAgent {
-				found = true
-				break
-			}
-		}
+	file := os.Getenv("PATH_EMAIL_TEMPLATE") + "login.html"
 
-		if !found {
-			fileBody = os.Getenv("PATH_EMAIL_TEMPLATE") + "login-warning.html"
-
-			emailEncrypt, _ := helper.Encrypt(users.Email)
-			urlRevokeToke := os.Getenv("URL_API") + "/api/user/revoke-token/" + emailEncrypt
-			dataEmail["url_revoke_token"] = urlRevokeToke
-
-			revokeToken := fmt.Sprintf("%s:%s", common.RevokeTokenKey, users.Email)
-			_ = uc.Redis.SetData(context.Background(), revokeToken, emailEncrypt, common.RevokeTokenExp)
-		}
-	}
-
-	tmpl, err := template.ParseFiles(fileBody)
+	tmpl, err := template.ParseFiles(file)
 	if err != nil {
 		return err
 	}

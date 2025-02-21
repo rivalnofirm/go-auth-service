@@ -61,3 +61,4 @@ SMTP_SENDER_NAME="Your App Name <your_email@gmail.com>"
 # URL
 URL_API=http://localhost:8080
 URL_PICTURE=http://localhost:8080
+URL_RESET_PASSWORD="fill in with the reset password URL"
