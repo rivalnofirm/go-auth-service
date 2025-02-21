@@ -15,6 +15,7 @@ import (
 type MailUCInterface interface {
 	SendMailLogin(userId int64, ipAddress, userAgent string) error
 	SendMailRegister(userId int64) error
+	SendMailUpdatePassword(userId int64) error
 }
 
 type MailUseCase struct {
@@ -114,6 +115,44 @@ func (uc *MailUseCase) SendMailRegister(userId int64) error {
 	emailBody := buffer.String()
 
 	err = helper.SendMail(users.Email, "Your Account Has Been Successfully Created", emailBody)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (uc *MailUseCase) SendMailUpdatePassword(userId int64) error {
+	users, err := uc.RepoUser.GetUserDetailById(userId)
+	if err != nil {
+		return err
+	}
+
+	name := users.FirstName
+	if users.LastName != "" {
+		name = users.FirstName + " " + users.LastName
+	}
+
+	fileBody := os.Getenv("PATH_EMAIL_TEMPLATE") + "update-password.html"
+
+	tmpl, err := template.ParseFiles(fileBody)
+	if err != nil {
+		return err
+	}
+
+	dataEmail := map[string]interface{}{
+		"name": name,
+	}
+
+	var buffer bytes.Buffer
+
+	if err = tmpl.Execute(&buffer, dataEmail); err != nil {
+		return err
+	}
+
+	emailBody := buffer.String()
+
+	err = helper.SendMail(users.Email, "Your Password Has Been Successfully Updated", emailBody)
 	if err != nil {
 		return err
 	}

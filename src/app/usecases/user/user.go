@@ -31,6 +31,7 @@ type UserUCInterface interface {
 	RevokeToken(emailEncrypt string) error
 	UpdateUserProfile(userId int64, data *user.UpdateUserProfileReq) error
 	UpdateProfilePicture(userId int64, fileHeader *multipart.FileHeader) error
+	UpdatePassword(userId int64, oldPassword, newPassword string) error
 }
 
 type userUseCase struct {
@@ -354,6 +355,49 @@ func (uc *userUseCase) UpdateProfilePicture(userId int64, fileHeader *multipart.
 	}
 
 	_ = uc.Redis.DeleteData(context.Background(), userKey)
+
+	return nil
+}
+
+func (uc *userUseCase) UpdatePassword(userId int64, oldPassword, newPassword string) error {
+	users, err := uc.RepoUser.GetById(userId)
+	if err != nil {
+		return err
+	}
+
+	if err = helper.VerifyPassword(users.Password, oldPassword); err != nil {
+		return fmt.Errorf(errorMessage.InvalidPassword)
+	}
+
+	password, err := helper.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	err = uc.RepoUser.UpdatePasswordByUserId(users.Id, password)
+	if err != nil {
+		return err
+	}
+
+	err = uc.RepoRefreshToken.UpdateStatusByUserId(users.Id)
+	if err != nil {
+		return err
+	}
+
+	userKey := fmt.Sprintf("%s:%d", common.UserIdKey, users.Id)
+	_ = uc.Redis.DeleteData(context.Background(), userKey)
+
+	sendMailDto := dtoNats.AuthBrokerDto{
+		UserId: users.Id,
+		Event:  common.EventUpdatePassword,
+	}
+
+	dataPublishMarshal, _ := json.Marshal(sendMailDto)
+	err = uc.NatsPublisher.Nats(dataPublishMarshal, common.NatsAuthSubject)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 
 	return nil
 }

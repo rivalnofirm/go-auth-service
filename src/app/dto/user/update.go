@@ -39,3 +39,40 @@ func (dto *UpdateUserProfileReq) Validate() error {
 	}
 	return nil
 }
+
+type UpdatePasswordReqInterface interface {
+	Validate() error
+}
+
+type UpdatePasswordReq struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+func (dto *UpdatePasswordReq) Validate() error {
+	if err := validation.ValidateStruct(
+		dto,
+		validation.Field(
+			&dto.OldPassword,
+			validation.Required,
+			validation.Length(8, 20).Error("old_password must be between 8 and 20 characters"),
+			validation.Match(regexp.MustCompile(`[A-Z]`)).Error("old_password must contain at least one uppercase letter"),
+			validation.Match(regexp.MustCompile(`[a-z]`)).Error("old_password must contain at least one lowercase letter"),
+			validation.Match(regexp.MustCompile(`[0-9]`)).Error("old_password must contain at least one number"),
+			validation.Match(regexp.MustCompile(`[\W_]+`)).Error("old_password must contain at least one special character (e.g., @, #, $, %, etc.)"),
+		),
+		validation.Field(
+			&dto.NewPassword,
+			validation.Required,
+			validation.Length(8, 20).Error("new_password must be between 8 and 20 characters"),
+			validation.Match(regexp.MustCompile(`[A-Z]`)).Error("new_password must contain at least one uppercase letter"),
+			validation.Match(regexp.MustCompile(`[a-z]`)).Error("new_password must contain at least one lowercase letter"),
+			validation.Match(regexp.MustCompile(`[0-9]`)).Error("new_password must contain at least one number"),
+			validation.Match(regexp.MustCompile(`[\W_]+`)).Error("new_password must contain at least one special character (e.g., @, #, $, %, etc.)"),
+		),
+	); err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -26,8 +26,9 @@ const (
 	NatsAuthSubject = `AuthSubject`
 	NatsAuthQueue   = `AuthQueue`
 
-	EventLogin    = "Login"
-	EventRegister = "Register"
+	EventLogin          = "Login"
+	EventRegister       = "Register"
+	EventUpdatePassword = "UpdatePassword"
 
 	// Redis Key
 	LoginKey        = "login_attempt"

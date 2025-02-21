@@ -23,6 +23,7 @@ type UserHandlerInterface interface {
 	RevokeToken(w http.ResponseWriter, r *http.Request)
 	UpdateProfile(w http.ResponseWriter, r *http.Request)
 	UpdateProfilePicture(w http.ResponseWriter, r *http.Request)
+	UpdatePassword(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {
@@ -275,4 +276,43 @@ func (h *userHandler) UpdateProfilePicture(w http.ResponseWriter, r *http.Reques
 	}
 
 	response.JSON(w, http.StatusOK, "success", "update profile picture", nil)
+}
+
+func (h *userHandler) UpdatePassword(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	if token == "" {
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.MissingToken, nil)
+		return
+	}
+
+	claims, err := helper.VerifyToken(token)
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.InvalidToken, nil)
+		return
+	}
+
+	postDTO := user.UpdatePasswordReq{}
+	err = json.NewDecoder(r.Body).Decode(&postDTO)
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusBadRequest, "error", errorMessage.RequestPayload, nil)
+		return
+	}
+
+	err = postDTO.Validate()
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusBadRequest, "error", err.Error(), nil)
+		return
+	}
+
+	err = h.usecase.UpdatePassword(claims.UserID, postDTO.OldPassword, postDTO.NewPassword)
+	if err != nil {
+		log.Println(err)
+		response.JSON(w, http.StatusUnauthorized, "error", errorMessage.Unauthorized, nil)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, "success", "update password", nil)
 }

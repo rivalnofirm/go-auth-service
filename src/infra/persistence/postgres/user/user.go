@@ -22,6 +22,7 @@ type UserRepository interface {
 	GetUserDetailById(id int64) (*dtoUser.UserDetails, error)
 	UpdateProfileByUserId(userId int64, firstName, lastName, birthDate, gender string) error
 	UpdateProfilePictureByUserId(userId int64, path string) error
+	UpdatePasswordByUserId(userId int64, password string) error
 }
 
 const (
@@ -53,6 +54,7 @@ const (
 							ua.id = $1 AND ua.deleted_at IS NULL AND ud.deleted_at IS NULL`
 	UpdateUserDetailByUserId = `UPDATE user_detail SET first_name = $1, last_name = $2, birth_date = $3, gender = $4, updated_at = now() WHERE user_id = $5 AND deleted_at IS NULL`
 	UpdatePictureByUserId    = `UPDATE user_detail SET picture = $1, updated_at = now() WHERE user_id = $2 AND deleted_at IS NULL`
+	UpdatePasswordByUserId   = `UPDATE user_auth SET password = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL`
 )
 
 type PreparedStatement struct {
@@ -63,6 +65,7 @@ type PreparedStatement struct {
 	getUserDetail            *sqlx.Stmt
 	updateUserDetailByUserId *sqlx.Stmt
 	updatePictureByUserId    *sqlx.Stmt
+	updatePasswordByUserId   *sqlx.Stmt
 }
 
 type userRepo struct {
@@ -106,6 +109,7 @@ func InitPreparedStatement(m *userRepo) {
 		getUserDetail:            m.Preparex(GetUserDetail, common.NotIsMasterDb),
 		updateUserDetailByUserId: m.Preparex(UpdateUserDetailByUserId, common.IsMasterDb),
 		updatePictureByUserId:    m.Preparex(UpdatePictureByUserId, common.IsMasterDb),
+		updatePasswordByUserId:   m.Preparex(UpdatePasswordByUserId, common.IsMasterDb),
 	}
 }
 
@@ -252,6 +256,15 @@ func (p *userRepo) UpdateProfileByUserId(userId int64, firstName, lastName, birt
 
 func (p *userRepo) UpdateProfilePictureByUserId(userId int64, path string) error {
 	_, err := p.statement.updatePictureByUserId.Exec(path, userId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *userRepo) UpdatePasswordByUserId(userId int64, password string) error {
+	_, err := p.statement.updatePasswordByUserId.Exec(password, userId)
 	if err != nil {
 		return err
 	}

@@ -68,6 +68,11 @@ func authWorker(concurrency int, w *AuthImpl) {
 			if err != nil {
 				log.Println("[ERROR] send mail err:", err)
 			}
+		} else if dataConsume.Event == common.EventUpdatePassword {
+			err = w.UseCaseMail.SendMailUpdatePassword(dataConsume.UserId)
+			if err != nil {
+				log.Println("[ERROR] send mail err:", err)
+			}
 		}
 	})
 

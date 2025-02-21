@@ -16,18 +16,21 @@ type RefreshTokenRepository interface {
 	Create(userId int64, refreshTokenHash, userAgent string) error
 	GetTokenActive(userId int64, userAgent string) (*models.UserRefreshToken, error)
 	UpdateStatus(userId int64, userAgent string) error
+	UpdateStatusByUserId(userId int64) error
 }
 
 const (
-	Create         = `INSERT INTO user_refresh_token (user_id, refresh_token_hash, expires_at, user_agent) VALUES ($1, $2, $3, $4)`
-	GetTokenActive = `SELECT * FROM user_refresh_token WHERE user_id = $1 AND user_agent = $2 AND is_active = TRUE`
-	UpdateStatus   = `UPDATE user_refresh_token SET is_active = FALSE WHERE user_id = $1 AND user_agent = $2`
+	Create               = `INSERT INTO user_refresh_token (user_id, refresh_token_hash, expires_at, user_agent) VALUES ($1, $2, $3, $4)`
+	GetTokenActive       = `SELECT * FROM user_refresh_token WHERE user_id = $1 AND user_agent = $2 AND is_active = TRUE`
+	UpdateStatus         = `UPDATE user_refresh_token SET is_active = FALSE WHERE user_id = $1 AND user_agent = $2`
+	UpdateStatusByUserId = `UPDATE user_refresh_token SET is_active = FALSE WHERE user_id = $1`
 )
 
 type PreparedStatement struct {
-	create         *sqlx.Stmt
-	getTokenActive *sqlx.Stmt
-	updateStatus   *sqlx.Stmt
+	create               *sqlx.Stmt
+	getTokenActive       *sqlx.Stmt
+	updateStatus         *sqlx.Stmt
+	updateStatusByUserId *sqlx.Stmt
 }
 
 type refreshTokenRepo struct {
@@ -64,9 +67,10 @@ func (p *refreshTokenRepo) Preparex(query string, isMaster bool) *sqlx.Stmt {
 
 func InitPreparedStatement(m *refreshTokenRepo) {
 	m.statement = PreparedStatement{
-		create:         m.Preparex(Create, common.IsMasterDb),
-		getTokenActive: m.Preparex(GetTokenActive, common.NotIsMasterDb),
-		updateStatus:   m.Preparex(UpdateStatus, common.IsMasterDb),
+		create:               m.Preparex(Create, common.IsMasterDb),
+		getTokenActive:       m.Preparex(GetTokenActive, common.NotIsMasterDb),
+		updateStatus:         m.Preparex(UpdateStatus, common.IsMasterDb),
+		updateStatusByUserId: m.Preparex(UpdateStatusByUserId, common.IsMasterDb),
 	}
 }
 
@@ -97,6 +101,15 @@ func (p *refreshTokenRepo) GetTokenActive(userId int64, userAgent string) (*mode
 
 func (p *refreshTokenRepo) UpdateStatus(userId int64, userAgent string) error {
 	_, err := p.statement.updateStatus.Exec(userId, userAgent)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *refreshTokenRepo) UpdateStatusByUserId(userId int64) error {
+	_, err := p.statement.updateStatusByUserId.Exec(userId)
 	if err != nil {
 		return err
 	}

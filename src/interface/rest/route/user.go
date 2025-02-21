@@ -18,6 +18,7 @@ func UserRouter(h handlersUser.UserHandlerInterface) http.Handler {
 	r.Get("/revoke-token/{email-encrypt}", h.RevokeToken)
 	r.Put("/update-profile", h.UpdateProfile)
 	r.Put("/update-profile-picture", h.UpdateProfilePicture)
+	r.Put("/update-password", h.UpdatePassword)
 
 	return r
 }
